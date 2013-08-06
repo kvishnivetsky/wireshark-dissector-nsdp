@@ -106,7 +106,7 @@ proto_register_nsdp(void)
 }
 
 void
-proto_reg_handoff_nsp(void)
+proto_reg_handoff_nsdp(void)
 {
     static dissector_handle_t nsdp_handle;
 

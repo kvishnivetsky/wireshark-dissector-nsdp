@@ -28,6 +28,6 @@ plugin_register (void)
 WS_DLL_PUBLIC_NOEXTERN void
 plugin_reg_handoff(void)
 {
-  {extern void proto_reg_handoff_nsp (void); proto_reg_handoff_nsp ();}
+  {extern void proto_reg_handoff_nsdp (void); proto_reg_handoff_nsdp ();}
 }
 #endif
