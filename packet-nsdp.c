@@ -21,8 +21,29 @@ static int hf_nsdp_reserved_3 = -1;
 static int hf_nsdp_tlv_type = -1;
 static int hf_nsdp_tlv_length = -1;
 static int hf_nsdp_tlv_value = -1;
+static int hf_nsdp_tlv_value_string = -1;
+static int hf_nsdp_tlv_eth = -1;
 static int ett_nsdp = -1;
 static int ett_nsdp_tlv = -1;
+
+static const char * tlv_types[] = {
+"", // 0
+"Model", // 1
+"", // 1
+"", // 3
+"MAC", // 4
+"", // 5
+"IP Address", // 6
+"Subnet mask", // 7
+"Gateway", // 8
+"", // 9
+"Password", // 10
+"", // 11
+"", // 12
+"FW Version", // 13
+"", // 14
+"" // 15
+};
 
 static void
 dissect_nsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
@@ -46,15 +67,13 @@ proto_register_nsdp(void)
             { "Reserved","nsdp.reserved1",FT_BYTES,
                 BASE_NONE,NULL,0x0,NULL,HFILL}
         },
-//TODO: parse with MAC idssector
         { &hf_nsdp_self_mac,
-            { "Self MAC","nsdp.self_mac",FT_BYTES,
-                BASE_NONE,NULL,0x0,NULL,HFILL}
+            { "Self MAC", "nsdp.local.ether", FT_ETHER, BASE_NONE, NULL, 0x0,
+            "Self Hardware Address", HFILL }
         },
-//TODO: parse with MAC idssector
         { &hf_nsdp_remote_mac,
-            { "Remote MAC","nsdp.remote_mac",FT_BYTES,
-                BASE_NONE,NULL,0x0,NULL,HFILL}
+            { "Remote MAC", "nsdp.remote.ether", FT_ETHER, BASE_NONE, NULL, 0x0,
+            "Remote Hardware Address", HFILL }
         },
         { &hf_nsdp_reserved_2,
             { "Reserved","nsdp.reserved_2",FT_BYTES,
@@ -84,6 +103,14 @@ proto_register_nsdp(void)
         { &hf_nsdp_tlv_value,
             { "Value","nsdp.tlv.value",FT_BYTES,
                 BASE_NONE,NULL,0x0,NULL,HFILL}
+        },
+        { &hf_nsdp_tlv_value_string,
+            { "String value","nsdp.tlv.value.string",FT_STRINGZ,
+                BASE_NONE,NULL,0x0,NULL,HFILL}
+        },
+        { &hf_nsdp_tlv_eth,
+            { "MAC", "nsdp.tlv.value.ether", FT_ETHER, BASE_NONE, NULL, 0x0,
+            "Hardware Address", HFILL }
         }
     };
 
@@ -152,17 +179,57 @@ dissect_nsdp_data(tvbuff_t *tvb, proto_tree *tree, int len, int offset) {
     guint16 t = 0;
     proto_item *tlv_item = NULL;
     proto_item *tlv_tree = NULL;
+    const guchar *ip_addr;
+    const guchar *hw_addr;
 
     while(len > 0) {
+        // Get Type field
         t = tvb_get_ntohs(tvb, offset);
+        // Get Length field
         l = tvb_get_ntohs(tvb, offset + 2);
-        tlv_item = proto_tree_add_text(tree, tvb, offset, l, "TLV: l=%u  t=%u", l, t);
+        // Format subtree item text from type field
+        switch(t) {
+        case 0x0001:
+        case 0x0004:
+        case 0x0006:
+        case 0x0007:
+        case 0x0008:
+        case 0x000d:
+        case 0x000a:
+            tlv_item = proto_tree_add_text(tree, tvb, offset, l, "%s", tlv_types[t]);
+        break;
+        case 0x7400:
+            tlv_item = proto_tree_add_text(tree, tvb, offset, l, "TLV: type=%s(0x%.4x) length=%u", "End of options", t, l);
+        break;
+        default:
+            tlv_item = proto_tree_add_text(tree, tvb, offset, l, "TLV: type=0x%.4x  length=%u", t, l);
+        }
 
         tlv_tree = proto_item_add_subtree(tlv_item, ett_nsdp_tlv);
         proto_tree_add_item(tlv_tree, hf_nsdp_tlv_type, tvb, offset, 2, ENC_NA); offset += 2;
         proto_tree_add_item(tlv_tree, hf_nsdp_tlv_length, tvb, offset, 2, ENC_NA); offset += 2;
         if (l > 0) {
-            proto_tree_add_item(tlv_tree, hf_nsdp_tlv_value, tvb, offset, l, ENC_NA); offset += l;
+            // Format value from type field
+            switch(t) {
+            case 0x0001:
+            case 0x000a:
+            case 0x000d:
+                proto_tree_add_item(tlv_tree, hf_nsdp_tlv_value_string, tvb, offset, l, ENC_NA);
+            break;
+            case 0x0004:
+                hw_addr = tvb_get_ptr(tvb, offset, 6);
+                proto_tree_add_ether(tlv_tree, hf_nsdp_tlv_eth, tvb, 0, 6, hw_addr);
+            break;
+            case 0x0006:
+            case 0x0007:
+            case 0x0008:
+                ip_addr = tvb_get_ptr(tvb, offset, 4);
+                proto_tree_add_text(tlv_tree, tvb, offset, l, "IP Address value: %s", ip_to_str(ip_addr));
+            break;
+            default:
+                proto_tree_add_item(tlv_tree, hf_nsdp_tlv_value, tvb, offset, l, ENC_NA);
+            }
+             offset += l;
         }
         len = tvb_reported_length_remaining(tvb, offset);
     }
