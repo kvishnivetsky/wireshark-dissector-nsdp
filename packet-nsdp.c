@@ -22,6 +22,7 @@ static int hf_nsdp_tlv_type = -1;
 static int hf_nsdp_tlv_length = -1;
 static int hf_nsdp_tlv_value = -1;
 static int ett_nsdp = -1;
+static int ett_nsdp_tlv = -1;
 
 static void
 dissect_nsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
@@ -87,7 +88,8 @@ proto_register_nsdp(void)
     };
 
     static gint *ett[] = {
-        &ett_nsdp
+        &ett_nsdp,
+        &ett_nsdp_tlv
     };
 
     proto_nsdp = proto_register_protocol (
@@ -119,7 +121,6 @@ dissect_nsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
     gint offset = 0;
     proto_item *ti = NULL;
     proto_item *nsdp_tree = NULL;
-    proto_item *nsdp_data_tree = NULL;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, NSDP_PROTO_NAME);
 
@@ -139,8 +140,7 @@ dissect_nsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
         proto_tree_add_item(nsdp_tree, hf_nsdp_reserved_3, tvb, offset, 4, ENC_NA); offset += 4;
 
         /* If any bytes remain, send it to the generic data dissector */
-        nsdp_data_tree = proto_item_add_subtree(nsdp_tree, ett_nsdp);
-        dissect_nsdp_data(tvb, nsdp_data_tree, tvb_reported_length_remaining(tvb, offset), offset);
+        dissect_nsdp_data(tvb, nsdp_tree, tvb_reported_length_remaining(tvb, offset), offset);
 //        tvb = tvb_new_subset_remaining(tvb, offset);
 //        call_dissector(data_handle, tvb, pinfo, nsdp_data_tree);
     }
@@ -149,16 +149,21 @@ dissect_nsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 static void
 dissect_nsdp_data(tvbuff_t *tvb, proto_tree *tree, int len, int offset) {
     guint16 l = 0;
-    proto_item *nsdp_tlv_tree = NULL;
+    guint16 t = 0;
+    proto_item *tlv_item = NULL;
+    proto_item *tlv_tree = NULL;
 
     while(len > 0) {
+        t = tvb_get_ntohs(tvb, offset);
         l = tvb_get_ntohs(tvb, offset + 2);
-        nsdp_tlv_tree = proto_item_add_subtree(tree, ett_nsdp);
-        proto_tree_add_item(nsdp_tlv_tree, hf_nsdp_tlv_type, tvb, offset, 2, ENC_NA); offset += 2;
-        proto_tree_add_item(nsdp_tlv_tree, hf_nsdp_tlv_length, tvb, offset, 2, ENC_NA); offset += 2;
+        tlv_item = proto_tree_add_text(tree, tvb, offset, l, "TLV: l=%u  t=%u", l, t);
+
+        tlv_tree = proto_item_add_subtree(tlv_item, ett_nsdp_tlv);
+        proto_tree_add_item(tlv_tree, hf_nsdp_tlv_type, tvb, offset, 2, ENC_NA); offset += 2;
+        proto_tree_add_item(tlv_tree, hf_nsdp_tlv_length, tvb, offset, 2, ENC_NA); offset += 2;
         if (l > 0) {
-            proto_tree_add_item(nsdp_tlv_tree, hf_nsdp_tlv_value, tvb, offset, l, ENC_NA); offset += l;
+            proto_tree_add_item(tlv_tree, hf_nsdp_tlv_value, tvb, offset, l, ENC_NA); offset += l;
         }
-        len -= l;
+        len = tvb_reported_length_remaining(tvb, offset);
     }
 }
